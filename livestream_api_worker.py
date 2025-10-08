@@ -16,7 +16,7 @@ from flask_cors import CORS
 from flask_socketio import SocketIO
 import psutil
 import redis
-from rq import Queue
+from rq import Queue, Worker
 
 # ==============================================================================
 # CẤU HÌNH LOGGING VÀ MÔI TRƯỜNG
@@ -51,6 +51,55 @@ RETRY_WINDOW_SECONDS = 180
 # ==============================================================================
 # CÁC HÀM TƯƠNG TÁC VỚI REDIS (QUẢN LÝ TRẠNG THÁI)
 # ==============================================================================
+def get_current_process_stats():
+    # 1. Thống kê FFMPEG (Tiến trình đang chạy)
+    running_streams_count = len(running_streams)
+    schedule_pids = {sid: proc.pid for sid, proc in running_streams.items()}
+    retry_counts = {sid: round(time.time() - start_time) for sid, start_time in retry_start_times.items()}
+
+    # 2. Thống kê RQ (Hàng đợi tải video)
+    try:
+        # Lấy độ dài hàng đợi
+        download_queue_length = q.count
+        
+        # Lấy thông tin workers và jobs đang thực hiện
+        active_workers = Worker.all(connection=redis_conn)
+        downloads_in_progress = []
+        for worker in active_workers:
+            if worker.get_current_job():
+                job = worker.get_current_job()
+                # Job ID là ID lịch trình
+                downloads_in_progress.append(job.args[0])
+    except Exception as e:
+        logging.error(f"Lỗi khi lấy thống kê RQ: {e}")
+        download_queue_length = -1
+        downloads_in_progress = ["ERROR"]
+    
+    # 3. Lấy danh sách các tiến trình FFMPEG (Output thô)
+    ffmpeg_processes = []
+    try:
+        # Sử dụng psutil để tìm các tiến trình con của API Worker có chứa 'ffmpeg'
+        current_process = psutil.Process(os.getpid())
+        for child in current_process.children(recursive=True):
+            try:
+                cmdline = ' '.join(child.cmdline())
+                if 'ffmpeg' in cmdline:
+                    ffmpeg_processes.append(cmdline)
+            except psutil.NoSuchProcess:
+                continue
+    except Exception as e:
+        logging.error(f"Lỗi khi lấy danh sách tiến trình FFMPEG: {e}")
+        ffmpeg_processes = ["ERROR: Could not fetch process list."]
+        
+    return {
+        'running_streams_count': running_streams_count,
+        'schedule_pids': schedule_pids,
+        'retry_counts': retry_counts,
+        'download_queue_length': download_queue_length,
+        'downloads_in_progress': downloads_in_progress,
+        'ffmpeg_processes': ffmpeg_processes
+    }
+    
 def save_schedule(schedule_data):
     key = f"schedule:{schedule_data['id']}"
     # Chuyển đổi các giá trị không phải chuỗi sang JSON để lưu vào Redis Hash
@@ -416,6 +465,12 @@ def handle_emergency_stop_all():
             
     socketio.emit('broadcast_update', get_all_schedules())
     logging.info("Đã hoàn tất dừng khẩn cấp.")
+    
+@socketio.on('get_process_stats')
+def handle_get_process_stats():
+    """Thu thập và gửi thống kê debug về cho client."""
+    stats = get_current_process_stats()
+    socketio.emit('process_stats', stats, room=request.sid)
 
 # ==============================================================================
 # ĐIỂM KHỞI CHẠY
