@@ -1,0 +1,11 @@
+Flask
+Flask-SocketIO
+Flask-Cors
+psutil
+gevent-websocket
+waitress
+google-auth-oauthlib
+google-auth-httplib2
+google-api-python-client
+redis
+rq==1.15.1
