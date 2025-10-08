@@ -37,12 +37,10 @@ def get_google_drive_file_id(url):
     return None
 
 def publish_update(schedule_id, data):
-    """Gửi thông báo cập nhật qua Redis Pub/Sub."""
     data['id'] = schedule_id
     redis_conn.publish('download_updates', json.dumps(data))
 
 def download_video_from_google_api(file_id, output_path, schedule_id):
-    """Tải video bằng Google Drive API và báo cáo tiến trình qua Redis."""
     try:
         creds = service_account.Credentials.from_service_account_file(
             SERVICE_ACCOUNT_FILE, scopes=['https://www.googleapis.com/auth/drive.readonly'])
@@ -71,9 +69,6 @@ def download_video_from_google_api(file_id, output_path, schedule_id):
         return False
 
 def download_video_task(schedule_id, video_url):
-    """
-    Tác vụ chính được RQ gọi để tải video.
-    """
     logging.info(f"Nhận việc tải video cho ID: {schedule_id}")
     
     file_id = get_google_drive_file_id(video_url)
