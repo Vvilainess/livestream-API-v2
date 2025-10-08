@@ -1,0 +1,48 @@
+services:
+  redis:
+    image: "redis:alpine"
+    ports:
+      - "6379:6379"
+    restart: always
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+  api_server:
+    build: ./backend
+    command: python livestream_api_worker.py
+    ports:
+      - "5000:5000"
+    volumes:
+      - D:/Live/videos:/videos
+      - ./backend/credentials.json:/app/credentials.json
+    environment:
+      - GOOGLE_APPLICATION_CREDENTIALS=/app/credentials.json
+    depends_on:
+      redis:
+        condition: service_healthy # Chỉ khởi động khi Redis đã sẵn sàng
+    restart: always
+
+  download_worker:
+    build: ./backend # Sử dụng cùng Dockerfile với api_server
+    deploy:
+      replicas: 3 
+    command: python download_worker.py
+    volumes:
+      - D:/Live/videos:/videos
+      - ./backend/credentials.json:/app/credentials.json
+    environment:
+      - GOOGLE_APPLICATION_CREDENTIALS=/app/credentials.json
+    depends_on:
+      redis:
+        condition: service_healthy # Chỉ khởi động khi Redis đã sẵn sàng
+    restart: always
+
+  frontend:
+    build: ./frontend
+    ports:
+      - "3000:80"
+    depends_on:
+      - api_server
+    restart: always
