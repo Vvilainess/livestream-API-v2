@@ -46,7 +46,7 @@ retry_start_times = {}
 state_lock = threading.Lock()
 background_monitor_thread = None
 redis_listener_thread = None
-RETRY_WINDOW_SECONDS = 180
+RETRY_WINDOW_SECONDS = 300
 
 # ==============================================================================
 # CÁC HÀM TƯƠNG TÁC VỚI REDIS (QUẢN LÝ TRẠNG THÁI)
